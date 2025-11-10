@@ -3,9 +3,9 @@
 //
 // Numan Thabit 2025 Nov
 
-use crate::venues::adapter::{DeepBookAdapter, LimitReq};
 use crate::quant::PoolParams;
-use anyhow::{Context, Result};
+use crate::venues::adapter::{DeepBookAdapter, LimitReq};
+use anyhow::Result;
 use tracing::warn;
 
 /// Pre-trade validation result
@@ -95,20 +95,20 @@ pub async fn validate_limit_order(
     // For asks: need base coin balance
     // Note: This requires knowing the pool's base/quote coins
     // For now, we'll add a placeholder that can be extended
-    
+
     // TODO: Add actual balance check once we have pool coin types
     // For DeepBook, we can use the adapter's DeepBookClient to check balance
-    
+
     Ok(result)
 }
 
 /// Validate BalanceManager has sufficient balance for an order
 pub async fn validate_balance_manager_funding(
-    adapter: &DeepBookAdapter,
-    req: &LimitReq,
-    pool_params: &PoolParams,
+    _adapter: &DeepBookAdapter,
+    _req: &LimitReq,
+    _pool_params: &PoolParams,
 ) -> Result<ValidationResult> {
-    let mut result = ValidationResult::new();
+    let result = ValidationResult::new();
 
     // Determine required coin type based on order side
     // For bids: need quote coin
@@ -117,10 +117,9 @@ pub async fn validate_balance_manager_funding(
     // 1. Get pool's base_coin and quote_coin types
     // 2. Calculate required amount (price * quantity for bids, quantity for asks)
     // 3. Check BalanceManager balance for that coin type
-    
+
     // Placeholder: We'll add this once we have access to pool coin types
     // For now, return valid to avoid blocking execution
-    
+
     Ok(result)
 }
-

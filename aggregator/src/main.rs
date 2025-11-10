@@ -6,10 +6,10 @@ use tracing_subscriber::EnvFilter;
 use ultra_aggr::config::AppConfig;
 use ultra_aggr::control::{AdmissionControl, CircuitBreakers};
 use ultra_aggr::router::{ExecutionEngine, RouteSelector, Router, ValidatorSelector};
-use ultra_aggr::transport::grpc::GrpcClients;
-use ultra_aggr::transport::graphql::GraphQLRpc;
-use ultra_aggr::transport::jsonrpc::JsonRpc;
 use ultra_aggr::state::{start_checkpoint_streaming, CheckpointState};
+use ultra_aggr::transport::graphql::GraphQLRpc;
+use ultra_aggr::transport::grpc::GrpcClients;
+use ultra_aggr::transport::jsonrpc::JsonRpc;
 use ultra_aggr::venues::adapter::DeepBookAdapter;
 
 #[tokio::main]
@@ -34,10 +34,7 @@ async fn run() -> Result<()> {
     let jsonrpc = JsonRpc::new(config.jsonrpc_endpoint.to_string());
 
     let graphql = if let Some(endpoint) = &config.graphql_endpoint {
-        Some(
-            GraphQLRpc::new(endpoint.clone())
-                .context("initialize GraphQL RPC client")?,
-        )
+        Some(GraphQLRpc::new(endpoint.clone()).context("initialize GraphQL RPC client")?)
     } else {
         warn!("GraphQL endpoint not provided; GraphQL RPC disabled");
         None
@@ -63,7 +60,7 @@ async fn run() -> Result<()> {
 
     // Initialize router components
     let validator_selector = Arc::new(ValidatorSelector::default());
-    
+
     // Register gRPC endpoint as a validator
     validator_selector
         .register(config.grpc_endpoint.to_string())
@@ -75,8 +72,8 @@ async fn run() -> Result<()> {
     let deepbook_arc = deepbook.clone().map(Arc::new);
     let route_selector = RouteSelector::new(
         deepbook_arc.as_ref().map(Arc::clone),
-        100,  // base_latency_ms
-        400,  // shared_object_latency_ms
+        100, // base_latency_ms
+        400, // shared_object_latency_ms
     );
 
     // Initialize execution engine
@@ -93,14 +90,17 @@ async fn run() -> Result<()> {
     // Set up sponsorship if configured
     if let Some(sponsorship_config) = &config.sponsorship {
         use ultra_aggr::sponsorship::{AbuseConfig, SponsorshipManager};
-        let sponsor_address = sponsorship_config.sponsor_address_parsed()
+        let sponsor_address = sponsorship_config
+            .sponsor_address_parsed()
             .context("parse sponsor address")?;
-        
+
         let abuse_config = AbuseConfig {
             max_tx_per_window: sponsorship_config.max_tx_per_window.unwrap_or(1000),
-            max_gas_per_window: sponsorship_config.max_gas_per_window.unwrap_or(1_000_000_000),
+            max_gas_per_window: sponsorship_config
+                .max_gas_per_window
+                .unwrap_or(1_000_000_000),
             window_duration: Duration::from_secs(
-                sponsorship_config.abuse_window_seconds.unwrap_or(3600)
+                sponsorship_config.abuse_window_seconds.unwrap_or(3600),
             ),
         };
 
@@ -118,12 +118,13 @@ async fn run() -> Result<()> {
                 gas_price,
                 abuse_config,
             )
-            .context("initialize sponsorship manager")?
+            .context("initialize sponsorship manager")?,
         );
 
         // Set per-user budget if configured
         if let Some(per_user_budget) = sponsorship_config.per_user_budget {
-            let window = sponsorship_config.budget_window_seconds
+            let window = sponsorship_config
+                .budget_window_seconds
                 .map(Duration::from_secs);
             sponsorship_manager
                 .set_user_budget(
@@ -147,10 +148,10 @@ async fn run() -> Result<()> {
 
     // Create Router instance for order execution
     let route_selector_arc = Arc::new(route_selector);
-    let router = Arc::new(Router::new(
-        route_selector_arc.clone(),
-        execution_engine.clone(),
-    ).with_control(admission.clone(), breakers.clone()));
+    let router = Arc::new(
+        Router::new(route_selector_arc.clone(), execution_engine.clone())
+            .with_control(admission.clone(), breakers.clone()),
+    );
 
     let app = App {
         config: Arc::new(config),
@@ -185,7 +186,9 @@ struct App {
     execution_engine: Arc<ExecutionEngine>,
     validator_selector: Arc<ValidatorSelector>,
     checkpoint_state: Option<CheckpointState>,
+    #[allow(dead_code)]
     admission: Option<AdmissionControl>,
+    #[allow(dead_code)]
     breakers: Option<CircuitBreakers>,
 }
 
@@ -243,7 +246,8 @@ impl App {
         // Start checkpoint streaming and reconciliation
         let checkpoint_state = CheckpointState::new(1024);
         let grpc_clone = self.grpc.clone();
-        let _stream_handle = start_checkpoint_streaming(grpc_clone, checkpoint_state.clone()).await?;
+        let _stream_handle =
+            start_checkpoint_streaming(grpc_clone, checkpoint_state.clone()).await?;
         self.checkpoint_state = Some(checkpoint_state.clone());
         info!("started checkpoint streaming");
 
@@ -251,12 +255,13 @@ impl App {
         let router_clone = self.router.clone();
         let api_router = ultra_aggr::router::router::create_api_router(router_clone);
         // Default API server address (can be configured via env var in future)
-        let api_addr: std::net::SocketAddr = "0.0.0.0:8080".parse()
-            .expect("valid default API address");
-        
+        let api_addr: std::net::SocketAddr =
+            "0.0.0.0:8080".parse().expect("valid default API address");
+
         info!(address = %api_addr, "HTTP API server starting");
         let _api_handle = tokio::spawn(async move {
-            let listener = tokio::net::TcpListener::bind(&api_addr).await
+            let listener = tokio::net::TcpListener::bind(&api_addr)
+                .await
                 .expect("bind API server address");
             if let Err(e) = axum::serve(listener, api_router).await {
                 warn!(error = %e, "API server error");
@@ -272,7 +277,7 @@ impl App {
                         grpc_execute = self.config.use_grpc_execute.unwrap_or(false),
                         "Numi heartbeat"
                     );
-                    
+
                     // Log validator stats periodically
                     let stats = self.validator_selector.stats().await;
                     for (endpoint, (ewma_ms, observations, healthy)) in stats {
@@ -295,7 +300,7 @@ impl App {
                     // Report execution and latency statistics
                     let exec_stats = self.execution_engine.get_stats();
                     let latency_stats = self.route_selector.get_latency_stats().await;
-                    
+
                     info!(
                         total_executions = exec_stats.total_executions,
                         successful = exec_stats.successful_executions,
@@ -309,7 +314,7 @@ impl App {
                         "execution and latency statistics"
                     );
 
-                    // Latency estimates are automatically updated via record_latency() 
+                    // Latency estimates are automatically updated via record_latency()
                     // after each execution, so no manual update needed here
                 }
                 res = tokio::signal::ctrl_c() => {

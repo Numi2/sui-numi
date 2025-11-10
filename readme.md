@@ -159,4 +159,3 @@ References
 	•	Sui checkpoints and certified history after execution.  ￼
 	•	Sponsored transactions concepts and patterns.  ￼
 
-written by AI 

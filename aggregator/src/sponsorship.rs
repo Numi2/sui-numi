@@ -216,10 +216,7 @@ impl SponsorshipManager {
         window: Option<Duration>,
     ) {
         let mut budgets = self.user_budgets.write().await;
-        budgets.insert(
-            user,
-            Budget::new(total_budget, per_tx_limit, window),
-        );
+        budgets.insert(user, Budget::new(total_budget, per_tx_limit, window));
         info!(
             user = %user,
             budget = total_budget,
@@ -237,10 +234,7 @@ impl SponsorshipManager {
     ) {
         let mut budgets = self.route_budgets.write().await;
         let route_class_clone = route_class.clone();
-        budgets.insert(
-            route_class,
-            Budget::new(total_budget, per_tx_limit, window),
-        );
+        budgets.insert(route_class, Budget::new(total_budget, per_tx_limit, window));
         info!(
             route_class = %route_class_clone,
             budget = total_budget,
@@ -319,21 +313,17 @@ impl SponsorshipManager {
         // Build sponsored TransactionData with sponsor's gas
         // TransactionData::new expects a single gas object ref, not a Vec
         // For sponsored transactions, we use the first gas object
-        let gas_object_ref = gas_object_refs.first()
+        let gas_object_ref = gas_object_refs
+            .first()
             .copied()
             .ok_or_else(|| anyhow::anyhow!("no gas object refs provided"))?;
 
-        let sponsored_tx_data = TransactionData::new(
-            programmable,
-            sender,
-            gas_object_ref,
-            gas_budget,
-            gas_price,
-        );
+        let sponsored_tx_data =
+            TransactionData::new(programmable, sender, gas_object_ref, gas_budget, gas_price);
 
         // Serialize sponsored transaction
-        let sponsored_tx_bcs = bcs::to_bytes(&sponsored_tx_data)
-            .context("serialize sponsored transaction")?;
+        let sponsored_tx_bcs =
+            bcs::to_bytes(&sponsored_tx_data).context("serialize sponsored transaction")?;
 
         Ok(sponsored_tx_bcs)
     }
@@ -341,10 +331,8 @@ impl SponsorshipManager {
     /// Sign a sponsored transaction with the sponsor's key
     /// The transaction bytes should be from build_sponsored_transaction_data
     pub fn sign_sponsored_transaction(&self, tx_bcs: &[u8]) -> Result<Vec<u8>, AggrError> {
-        let (sponsor_sig_bytes, _) = sign_tx_bcs_ed25519_to_serialized_signature(
-            tx_bcs,
-            &self.sponsor_key_hex,
-        )?;
+        let (sponsor_sig_bytes, _) =
+            sign_tx_bcs_ed25519_to_serialized_signature(tx_bcs, &self.sponsor_key_hex)?;
         Ok(sponsor_sig_bytes)
     }
 
@@ -412,4 +400,3 @@ impl SponsorshipManager {
         budgets.get(&user).map(|b| b.remaining())
     }
 }
-

@@ -7,8 +7,11 @@
 use crate::router::routes::{RoutePlan, RouteSelection};
 use crate::venues::adapter::{DeepBookAdapter, LimitReq};
 use anyhow::{Context, Result};
-use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
 use std::collections::VecDeque;
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc,
+};
 use tokio::sync::RwLock;
 use tracing::{debug, info};
 
@@ -62,7 +65,7 @@ impl RouteSelector {
 
         let mut samples = samples.write().await;
         samples.push_back(latency_ms);
-        
+
         // Keep only recent samples
         while samples.len() > self.max_samples {
             samples.pop_front();
@@ -78,14 +81,17 @@ impl RouteSelector {
 
             // Calculate average of recent samples
             let recent_avg: f64 = samples.iter().sum::<f64>() / samples.len() as f64;
-            
+
             // Update using EWMA
-            let new_estimate = (self.latency_alpha * recent_avg) + ((1.0 - self.latency_alpha) * current_estimate);
-            
+            let new_estimate =
+                (self.latency_alpha * recent_avg) + ((1.0 - self.latency_alpha) * current_estimate);
+
             if uses_shared_objects {
-                self.shared_object_latency_ms.store(new_estimate as u64, Ordering::Relaxed);
+                self.shared_object_latency_ms
+                    .store(new_estimate as u64, Ordering::Relaxed);
             } else {
-                self.base_latency_ms.store(new_estimate as u64, Ordering::Relaxed);
+                self.base_latency_ms
+                    .store(new_estimate as u64, Ordering::Relaxed);
             }
 
             debug!(
@@ -217,13 +223,8 @@ impl RouteSelector {
             .context("fetch level2 order book")?;
 
         // Calculate expected slippage based on order book depth
-        let slippage = self.calculate_slippage(
-            req.price,
-            req.quantity,
-            req.is_bid,
-            &level2,
-            &pool_params,
-        )?;
+        let slippage =
+            self.calculate_slippage(req.price, req.quantity, req.is_bid, &level2, &pool_params)?;
 
         // Fetch trade parameters for fee estimation
         let trade_params = adapter
@@ -341,7 +342,8 @@ impl RouteSelector {
     /// This method can be called from multiple threads safely
     pub fn update_latency_estimates(&self, base_ms: u64, shared_ms: u64) {
         self.base_latency_ms.store(base_ms, Ordering::Relaxed);
-        self.shared_object_latency_ms.store(shared_ms, Ordering::Relaxed);
+        self.shared_object_latency_ms
+            .store(shared_ms, Ordering::Relaxed);
         debug!(
             base_latency_ms = base_ms,
             shared_latency_ms = shared_ms,
@@ -360,4 +362,3 @@ pub struct LatencyStats {
     pub owned_avg: Option<f64>,
     pub shared_avg: Option<f64>,
 }
-

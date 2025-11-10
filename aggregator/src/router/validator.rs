@@ -136,10 +136,7 @@ impl ValidatorSelector {
             .filter(|(_, stats)| {
                 stats.healthy
                     && stats.observations >= self.min_observations
-                    && now
-                        .duration_since(stats.last_update)
-                        .as_secs()
-                        < self.max_staleness_secs
+                    && now.duration_since(stats.last_update).as_secs() < self.max_staleness_secs
             })
             .collect();
 
@@ -162,17 +159,15 @@ impl ValidatorSelector {
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
 
-        candidates
-            .first()
-            .map(|(id, stats)| {
-                debug!(
-                    endpoint = %id.endpoint,
-                    ewma_ms = stats.effects_ewma_ms,
-                    observations = stats.observations,
-                    "selected best validator"
-                );
-                id.endpoint.clone()
-            })
+        candidates.first().map(|(id, stats)| {
+            debug!(
+                endpoint = %id.endpoint,
+                ewma_ms = stats.effects_ewma_ms,
+                observations = stats.observations,
+                "selected best validator"
+            );
+            id.endpoint.clone()
+        })
     }
 
     /// Get current statistics for all validators
@@ -195,4 +190,3 @@ impl Default for ValidatorSelector {
         Self::new(0.2, 300, 5) // alpha=0.2, 5min staleness, 5 min observations
     }
 }
-

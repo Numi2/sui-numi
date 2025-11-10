@@ -10,13 +10,14 @@ use sui_sdk::{SuiClient, SuiClientBuilder};
 use tracing::info;
 
 /// AMM adapter trait - defines interface for AMM venue interactions
+#[allow(async_fn_in_trait)]
 pub trait AmmAdapter: Send + Sync {
     /// Get the pool's current price
     async fn get_price(&self, pool_id: &str) -> Result<f64>;
-    
+
     /// Get available liquidity for a swap
     async fn get_liquidity(&self, pool_id: &str, amount_in: f64, is_buy: bool) -> Result<f64>;
-    
+
     /// Build a swap PTB (programmable transaction)
     async fn build_swap_ptb(
         &self,
@@ -30,26 +31,20 @@ pub trait AmmAdapter: Send + Sync {
 /// Generic AMM adapter placeholder
 /// This will be extended with specific AMM implementations (Cetus, Turbos, etc.)
 pub struct GenericAmmAdapter {
+    #[allow(dead_code)]
     sui: SuiClient,
+    #[allow(dead_code)]
     sender: SuiAddress,
     // Future: AMM-specific configuration
 }
 
 impl GenericAmmAdapter {
-    pub async fn new(
-        fullnode_url: &str,
-        sender: SuiAddress,
-    ) -> Result<Self> {
-        let sui = SuiClientBuilder::default()
-            .build(fullnode_url)
-            .await?;
-        
+    pub async fn new(fullnode_url: &str, sender: SuiAddress) -> Result<Self> {
+        let sui = SuiClientBuilder::default().build(fullnode_url).await?;
+
         info!("Generic AMM adapter initialized");
-        
-        Ok(Self {
-            sui,
-            sender,
-        })
+
+        Ok(Self { sui, sender })
     }
 }
 
@@ -58,12 +53,12 @@ impl AmmAdapter for GenericAmmAdapter {
         // TODO: Implement price fetching from AMM
         anyhow::bail!("AMM price fetching not yet implemented")
     }
-    
+
     async fn get_liquidity(&self, _pool_id: &str, _amount_in: f64, _is_buy: bool) -> Result<f64> {
         // TODO: Implement liquidity calculation
         anyhow::bail!("AMM liquidity calculation not yet implemented")
     }
-    
+
     async fn build_swap_ptb(
         &self,
         _pool_id: &str,
@@ -79,4 +74,3 @@ impl AmmAdapter for GenericAmmAdapter {
 // Future: Specific AMM implementations
 // pub struct CetusAdapter { ... }
 // pub struct TurbosAdapter { ... }
-

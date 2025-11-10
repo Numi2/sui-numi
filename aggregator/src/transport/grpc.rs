@@ -121,14 +121,14 @@ impl GrpcClients {
     }
 
     /// Execute via gRPC v2 Transaction Execution Service (enable with `--features grpc-exec`).
-    /// 
+    ///
     /// This method uses the Transaction Execution Service which, with Mysticeti v2,
     /// routes through the Transaction Driver for optimized submission. The Transaction Driver
     /// replaces the legacy Quorum Driver and provides:
     /// - Reduced round trips
     /// - Lower confirmation latency
     /// - Simplified submission path
-    /// 
+    ///
     /// The Transaction Driver is transparent at the gRPC API level - nodes with Mysticeti v2
     /// automatically use it when processing ExecuteTransaction requests.
     #[cfg(feature = "grpc-exec")]

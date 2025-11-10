@@ -60,7 +60,10 @@ impl GraphQLRpc {
             REQ_ERRORS
                 .with_label_values(&["graphql", operation_name])
                 .inc();
-            return Err(anyhow::anyhow!("GraphQL request failed with status: {}", status));
+            return Err(anyhow::anyhow!(
+                "GraphQL request failed with status: {}",
+                status
+            ));
         }
 
         let response_body: GraphQLResponse<T> = response
@@ -87,9 +90,7 @@ impl GraphQLRpc {
             ));
         }
 
-        response_body
-            .data
-            .context("missing GraphQL response data")
+        response_body.data.context("missing GraphQL response data")
     }
 
     /// Query checkpoints with optional filters
@@ -135,9 +136,8 @@ impl GraphQLRpc {
             variables["after"] = serde_json::json!(a);
         }
 
-        let response: GraphQLCheckpointsResponse = self
-            .execute_query(query, variables, "Checkpoints")
-            .await?;
+        let response: GraphQLCheckpointsResponse =
+            self.execute_query(query, variables, "Checkpoints").await?;
 
         Ok(response.checkpoints)
     }
@@ -206,9 +206,8 @@ impl GraphQLRpc {
             variables["after"] = serde_json::json!(a);
         }
 
-        let response: GraphQLTransactionsResponse = self
-            .execute_query(query, variables, "Transactions")
-            .await?;
+        let response: GraphQLTransactionsResponse =
+            self.execute_query(query, variables, "Transactions").await?;
 
         Ok(response.transactions)
     }
@@ -296,9 +295,8 @@ impl GraphQLRpc {
             variables["after"] = serde_json::json!(a);
         }
 
-        let response: GraphQLObjectsResponse = self
-            .execute_query(query, variables, "Objects")
-            .await?;
+        let response: GraphQLObjectsResponse =
+            self.execute_query(query, variables, "Objects").await?;
 
         Ok(response.objects)
     }
@@ -347,9 +345,8 @@ impl GraphQLRpc {
             variables["after"] = serde_json::json!(a);
         }
 
-        let response: GraphQLEventsResponse = self
-            .execute_query(query, variables, "Events")
-            .await?;
+        let response: GraphQLEventsResponse =
+            self.execute_query(query, variables, "Events").await?;
 
         Ok(response.events)
     }
@@ -476,10 +473,7 @@ impl GraphQLRpc {
 
     /// Compliance query: Get all events for a transaction digest
     /// Useful for tracing transaction effects and event emissions
-    pub async fn get_transaction_events(
-        &self,
-        transaction_digest: &str,
-    ) -> Result<Vec<Event>> {
+    pub async fn get_transaction_events(&self, transaction_digest: &str) -> Result<Vec<Event>> {
         let connection = self
             .query_events(
                 Some(EventFilter {
@@ -496,9 +490,7 @@ impl GraphQLRpc {
     /// Get latest checkpoint sequence number
     /// Useful for tracking chain progress and determining query ranges
     pub async fn get_latest_checkpoint(&self) -> Result<Option<Checkpoint>> {
-        let connection = self
-            .query_checkpoints(None, Some(1), None)
-            .await?;
+        let connection = self.query_checkpoints(None, Some(1), None).await?;
 
         Ok(connection.nodes.into_iter().next())
     }
@@ -735,4 +727,3 @@ pub struct Event {
 pub struct EventSenderAddress {
     pub address: String,
 }
-

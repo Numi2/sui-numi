@@ -148,4 +148,3 @@ impl RouteSelection {
         &self.plan
     }
 }
-

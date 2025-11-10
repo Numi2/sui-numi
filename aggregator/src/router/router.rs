@@ -14,14 +14,13 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use super::{RouteSelector, ExecutionEngine};
-use crate::router::routes::RouteSelection;
-use crate::router::execution::{ExecutionResult, ExecutionStats};
-use crate::router::selector::LatencyStats;
+use super::{ExecutionEngine, RouteSelector};
 use crate::control::{AdmissionControl, CircuitBreakers};
+use crate::router::execution::{ExecutionResult, ExecutionStats};
+use crate::router::routes::RouteSelection;
+use crate::router::selector::LatencyStats;
 use crate::router::validation::validate_limit_order;
-use anyhow::{Result, Context};
-use tracing::{warn, error};
+use anyhow::{Context, Result};
 
 /// High-level Router that ties selection and execution together
 pub struct Router {
@@ -33,8 +32,8 @@ pub struct Router {
 
 impl Router {
     pub fn new(selector: Arc<RouteSelector>, executor: Arc<ExecutionEngine>) -> Self {
-        Self { 
-            selector, 
+        Self {
+            selector,
             executor,
             admission: None,
             breakers: None,
@@ -74,7 +73,8 @@ impl Router {
         // 2. Pre-trade validation
         if let Some(adapter) = self.selector.deepbook_adapter() {
             let validation = validate_limit_order(adapter, req).await?;
-            validation.into_result()
+            validation
+                .into_result()
                 .context("pre-trade validation failed")?;
         }
 
@@ -82,7 +82,7 @@ impl Router {
         let sel = self.selector.select_route(req).await?;
         let best = sel.best_plan().clone();
         let uses_shared = best.uses_shared_objects;
-        
+
         // 4. Check circuit breaker for route class
         let route_class = format!("{:?}", best.route);
         if let Some(breakers) = &self.breakers {
@@ -99,7 +99,9 @@ impl Router {
                     breakers.record_success(&route_class).await;
                 }
                 // Record latency observation for adaptive updates
-                self.selector.record_latency(result.effects_time_ms, uses_shared).await;
+                self.selector
+                    .record_latency(result.effects_time_ms, uses_shared)
+                    .await;
                 Ok(result)
             }
             Err(e) => {
@@ -196,17 +198,14 @@ async fn quote_route(
         expiration_ms: req.expiration_ms,
     };
 
-    let selection = router
-        .select_route(&limit_req)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: e.to_string(),
-                }),
-            )
-        })?;
+    let selection = router.select_route(&limit_req).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        )
+    })?;
 
     let plan_response = RoutePlanResponse {
         route_type: format!("{:?}", selection.plan.route),
@@ -259,17 +258,14 @@ async fn execute_order(
         expiration_ms: req.expiration_ms,
     };
 
-    let result = router
-        .execute_limit_order(&limit_req)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: e.to_string(),
-                }),
-            )
-        })?;
+    let result = router.execute_limit_order(&limit_req).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        )
+    })?;
 
     Ok(Json(LimitOrderResponse {
         digest: result.digest,
@@ -318,12 +314,12 @@ async fn update_latency(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let selector = router.selector();
     let (current_base, current_shared) = selector.get_latency_estimates();
-    
+
     let new_base = req.base_latency_ms.unwrap_or(current_base);
     let new_shared = req.shared_latency_ms.unwrap_or(current_shared);
-    
+
     selector.update_latency_estimates(new_base, new_shared);
-    
+
     Ok(Json(serde_json::json!({
         "base_latency_ms": new_base,
         "shared_latency_ms": new_shared,
@@ -331,4 +327,3 @@ async fn update_latency(
         "previous_shared_latency_ms": current_shared,
     })))
 }
-

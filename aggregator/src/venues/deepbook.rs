@@ -176,12 +176,12 @@ impl DeepBookVenue {
         // For size: lo.size is in base units, so we convert assuming standard scaling.
         // The SDK will handle final quantization based on pool parameters.
         use sui_deepbookv3::utils::config::FLOAT_SCALAR;
-        
+
         // Convert scaled price to normalized price
         // This is a simplified conversion - in production, you'd want to use actual coin scalars
         // from the pool configuration. For now, we assume standard scaling.
         let price_f64 = lo.price as f64 / FLOAT_SCALAR as f64;
-        
+
         // Convert size from base units to normalized quantity
         // Assuming standard 9-decimal scaling for base coins
         let size_f64 = lo.size as f64 / 1_000_000_000.0;

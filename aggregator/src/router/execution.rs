@@ -9,20 +9,20 @@ use crate::router::routes::RoutePlan;
 use crate::router::validator::ValidatorSelector;
 use crate::signing::sign_tx_bcs_ed25519_to_serialized_signature;
 use crate::sponsorship::{SponsorshipManager, SponsorshipRequest};
+use crate::transport::grpc::sui::rpc::v2::ExecutedTransaction;
 use crate::transport::grpc::GrpcClients;
 use crate::transport::jsonrpc::JsonRpc;
 use crate::venues::adapter::DeepBookAdapter;
 use anyhow::{Context, Result};
 use backoff::{future::retry, ExponentialBackoff};
+use bcs;
 use std::collections::HashSet;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
-use crate::transport::grpc::sui::rpc::v2::ExecutedTransaction;
-use tracing::{info, warn};
 use sui_sdk::types::programmable_transaction_builder::ProgrammableTransactionBuilder;
 use sui_sdk::types::transaction::{InputObjectKind, TransactionData, TransactionKind};
-use bcs;
+use tracing::{info, warn};
 
 /// Execution statistics for monitoring
 #[derive(Debug, Clone, serde::Serialize)]
@@ -123,7 +123,8 @@ impl ExecutionEngine {
         let successful = self.successful_executions.load(Ordering::Relaxed);
         let failed = self.failed_executions.load(Ordering::Relaxed);
         let total_effects_ms = self.total_effects_time_ms.load(Ordering::Relaxed) as f64 / 1000.0;
-        let total_checkpoint_ms = self.total_checkpoint_time_ms.load(Ordering::Relaxed) as f64 / 1000.0;
+        let total_checkpoint_ms =
+            self.total_checkpoint_time_ms.load(Ordering::Relaxed) as f64 / 1000.0;
         let checkpoint_count = self.checkpoint_count.load(Ordering::Relaxed);
 
         ExecutionStats {
@@ -169,11 +170,9 @@ impl ExecutionEngine {
             self.sign_sponsored_transaction(&tx_bcs).await?
         } else {
             // Regular transaction: just user signature
-            let (signature_bytes, _pubkey) = sign_tx_bcs_ed25519_to_serialized_signature(
-                &tx_bcs,
-                &self.secret_key_hex,
-            )
-            .map_err(|e| AggrError::Signing(e.to_string()))?;
+            let (signature_bytes, _pubkey) =
+                sign_tx_bcs_ed25519_to_serialized_signature(&tx_bcs, &self.secret_key_hex)
+                    .map_err(|e| AggrError::Signing(e.to_string()))?;
             vec![signature_bytes]
         };
 
@@ -243,10 +242,12 @@ impl ExecutionEngine {
 
         // Update statistics
         self.successful_executions.fetch_add(1, Ordering::Relaxed);
-        self.total_effects_time_ms.fetch_add((effects_time_ms * 1000.0) as u64, Ordering::Relaxed);
-        
+        self.total_effects_time_ms
+            .fetch_add((effects_time_ms * 1000.0) as u64, Ordering::Relaxed);
+
         if let Some(checkpoint_ms) = checkpoint_time_ms {
-            self.total_checkpoint_time_ms.fetch_add((checkpoint_ms * 1000.0) as u64, Ordering::Relaxed);
+            self.total_checkpoint_time_ms
+                .fetch_add((checkpoint_ms * 1000.0) as u64, Ordering::Relaxed);
             self.checkpoint_count.fetch_add(1, Ordering::Relaxed);
         }
 
@@ -282,9 +283,10 @@ impl ExecutionEngine {
             crate::router::routes::Route::MultiVenueSplit { deepbook } => {
                 self.compile_multi_venue_split(deepbook.as_ref()).await
             }
-            crate::router::routes::Route::CancelReplace { cancel_digest, replace } => {
-                self.compile_cancel_replace(cancel_digest, replace).await
-            }
+            crate::router::routes::Route::CancelReplace {
+                cancel_digest,
+                replace,
+            } => self.compile_cancel_replace(cancel_digest, replace).await,
             crate::router::routes::Route::FlashLoanArb { .. } => {
                 // Flash loan routes require flash loan contract integration
                 // For now, return an error indicating it needs implementation
@@ -307,11 +309,13 @@ impl ExecutionEngine {
                 .deepbook
                 .as_ref()
                 .context("DeepBook adapter not available for multi-venue route")?;
-            
+
             // Build DeepBook order command directly into the PTB
-            use sui_deepbookv3::utils::types::{OrderType, PlaceLimitOrderParams, SelfMatchingOptions};
-            use sui_deepbookv3::utils::config::MAX_TIMESTAMP;
             use crate::quant::{quantize_price, quantize_size};
+            use sui_deepbookv3::utils::config::MAX_TIMESTAMP;
+            use sui_deepbookv3::utils::types::{
+                OrderType, PlaceLimitOrderParams, SelfMatchingOptions,
+            };
 
             // Quantize price and size
             let params = adapter.pool_params(&req.pool).await?;
@@ -342,7 +346,7 @@ impl ExecutionEngine {
                 .place_limit_order(&mut ptb, place_params)
                 .await
                 .context("build DeepBook order command for multi-venue route")?;
-            
+
             has_commands = true;
         }
 
@@ -368,9 +372,13 @@ impl ExecutionEngine {
             .collect();
 
         // Get gas price and select gas
-        let adapter = self.deepbook.as_ref()
+        let adapter = self
+            .deepbook
+            .as_ref()
             .context("DeepBook adapter needed for gas selection")?;
-        let gas_price = adapter.reference_gas_price().await
+        let gas_price = adapter
+            .reference_gas_price()
+            .await
             .context("fetch reference gas price")?;
 
         use sui_deepbookv3::utils::config::GAS_BUDGET;
@@ -378,7 +386,13 @@ impl ExecutionEngine {
         let gas = adapter
             .sui_client()
             .transaction_builder()
-            .select_gas(self.user_address, None, GAS_BUDGET, input_objects, gas_price)
+            .select_gas(
+                self.user_address,
+                None,
+                GAS_BUDGET,
+                input_objects,
+                gas_price,
+            )
             .await
             .context("select gas coin")?;
 
@@ -410,7 +424,7 @@ impl ExecutionEngine {
         // Build a PTB that:
         // 1. Cancels the existing order (by digest)
         // 2. Places a new order
-        
+
         let mut ptb = ProgrammableTransactionBuilder::new();
 
         // 1. Look up the order ID from the transaction digest
@@ -418,9 +432,12 @@ impl ExecutionEngine {
             .get_order_id_from_digest(cancel_digest, &replace.pool)
             .await
             .context("lookup order ID from transaction digest")?
-            .ok_or_else(|| anyhow::anyhow!(
-                "could not find order ID in transaction digest: {}", cancel_digest
-            ))?;
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "could not find order ID in transaction digest: {}",
+                    cancel_digest
+                )
+            })?;
 
         info!(
             cancel_digest = cancel_digest,
@@ -441,9 +458,9 @@ impl ExecutionEngine {
             .parse::<u64>()
             .context("client_order_id must parse to u64")?;
 
-        use sui_deepbookv3::utils::types::{OrderType, PlaceLimitOrderParams, SelfMatchingOptions};
-        use sui_deepbookv3::utils::config::MAX_TIMESTAMP;
         use crate::quant::{quantize_price, quantize_size};
+        use sui_deepbookv3::utils::config::MAX_TIMESTAMP;
+        use sui_deepbookv3::utils::types::{OrderType, PlaceLimitOrderParams, SelfMatchingOptions};
 
         // Quantize price and size
         let params = adapter.pool_params(&replace.pool).await?;
@@ -485,7 +502,13 @@ impl ExecutionEngine {
         let gas = adapter
             .sui_client()
             .transaction_builder()
-            .select_gas(self.user_address, None, GAS_BUDGET, input_objects, gas_price)
+            .select_gas(
+                self.user_address,
+                None,
+                GAS_BUDGET,
+                input_objects,
+                gas_price,
+            )
             .await
             .context("select gas coin")?;
 
@@ -575,11 +598,9 @@ impl ExecutionEngine {
             .context("sponsorship not available")?;
 
         // User signs
-        let (user_sig, _) = sign_tx_bcs_ed25519_to_serialized_signature(
-            tx_bcs,
-            &self.secret_key_hex,
-        )
-        .map_err(|e| AggrError::Signing(format!("user signing failed: {}", e)))?;
+        let (user_sig, _) =
+            sign_tx_bcs_ed25519_to_serialized_signature(tx_bcs, &self.secret_key_hex)
+                .map_err(|e| AggrError::Signing(format!("user signing failed: {}", e)))?;
 
         // Sponsor signs
         let sponsor_sig = sponsorship.sign_sponsored_transaction(tx_bcs)?;
@@ -604,7 +625,7 @@ impl ExecutionEngine {
         let grpc_clone = self.grpc.clone();
         let jsonrpc_clone = self.jsonrpc.clone();
         let use_grpc = self.use_grpc_execute;
-        
+
         retry(backoff, || {
             let tx_bcs = tx_bcs.clone();
             let signatures = signatures.clone();
@@ -634,7 +655,7 @@ impl ExecutionEngine {
         {
             use crate::transport::grpc::sui::rpc::v2::{Bcs, SignatureScheme, UserSignature};
             let mut grpc_guard = grpc.lock().await;
-            
+
             // Convert all signatures to UserSignature format
             let user_signatures: Vec<UserSignature> = signatures
                 .iter()
@@ -648,7 +669,8 @@ impl ExecutionEngine {
                 })
                 .collect();
 
-            grpc_guard.execute_ptb(tx_bcs.to_vec(), user_signatures)
+            grpc_guard
+                .execute_ptb(tx_bcs.to_vec(), user_signatures)
                 .await
                 .context("gRPC execute transaction")
         }
@@ -668,7 +690,7 @@ impl ExecutionEngine {
         signatures: &[Vec<u8>],
     ) -> Result<ExecutedTransaction> {
         use base64::{engine::general_purpose::STANDARD_NO_PAD as B64, Engine as _};
-        
+
         // Convert all signatures to base64
         let sigs_b64: Vec<String> = signatures
             .iter()
@@ -691,7 +713,6 @@ impl ExecutionEngine {
         );
     }
 
-
     /// Compute transaction digest from BCS bytes
     fn compute_digest(&self, tx_bcs: &[u8]) -> Result<String> {
         use blake2::{Blake2b512, Digest};
@@ -701,4 +722,3 @@ impl ExecutionEngine {
         Ok(hex::encode(&hash[..32]))
     }
 }
-

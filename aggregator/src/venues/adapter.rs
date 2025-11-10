@@ -12,9 +12,9 @@ use sui_deepbookv3::utils::config::{Environment, GAS_BUDGET, MAX_TIMESTAMP};
 use sui_deepbookv3::utils::types::{
     BalanceManager, OrderType, PlaceLimitOrderParams, SelfMatchingOptions,
 };
+use sui_sdk::types::base_types::ObjectRef;
 use sui_sdk::types::base_types::SuiAddress;
 use sui_sdk::types::programmable_transaction_builder::ProgrammableTransactionBuilder;
-use sui_sdk::types::base_types::ObjectRef;
 use sui_sdk::types::transaction::{InputObjectKind, TransactionData, TransactionKind};
 use sui_sdk::{SuiClient, SuiClientBuilder};
 use tracing::{info, warn};
@@ -234,7 +234,7 @@ impl DeepBookAdapter {
                 )
                 .await
                 .with_context(|| format!("fetch object {id}"))?;
-            
+
             if let Some(obj) = resp.data {
                 refs.push((obj.object_id, obj.version, obj.digest));
             } else {
@@ -294,7 +294,10 @@ impl DeepBookAdapter {
     }
 
     /// Get pool trade parameters (fees, stake requirements)
-    pub async fn trade_params(&self, pool: &str) -> Result<sui_deepbookv3::client::PoolTradeParams> {
+    pub async fn trade_params(
+        &self,
+        pool: &str,
+    ) -> Result<sui_deepbookv3::client::PoolTradeParams> {
         self.db
             .pool_trade_params(pool)
             .await
@@ -327,18 +330,14 @@ impl DeepBookAdapter {
 
     /// Get order ID from transaction digest by querying transaction effects
     /// This extracts the order ID from the transaction that placed the order
-    pub async fn get_order_id_from_digest(
-        &self,
-        digest: &str,
-        pool: &str,
-    ) -> Result<Option<u128>> {
+    pub async fn get_order_id_from_digest(&self, digest: &str, pool: &str) -> Result<Option<u128>> {
         use sui_sdk::types::digests::TransactionDigest;
-        
+
         // Query transaction by digest
         let tx_digest = TransactionDigest::from_str(digest)
             .map_err(|e| anyhow::anyhow!("invalid transaction digest: {}", e))?;
-        
-        let tx = self
+
+        let _tx = self
             .sui
             .read_api()
             .get_transaction_with_options(
@@ -359,7 +358,7 @@ impl DeepBookAdapter {
         // 2. Find OrderPlaced event (check event_type or package_id/module)
         // 3. Extract order_id from event JSON/BCS data
         // 4. Return the order_id
-        
+
         // For now, return None - the cancel-replace route will need order ID provided
         // directly or looked up via account_open_orders
         warn!(
